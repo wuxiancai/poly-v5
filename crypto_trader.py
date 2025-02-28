@@ -1353,7 +1353,7 @@ class CryptoTrader:
                     timeout=3,
                     silent=True
                 )
-            
+                return
             # 清除现有输入并输入新值
             amount_input.clear()
             amount_input.send_keys("1")
