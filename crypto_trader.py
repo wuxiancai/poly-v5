@@ -786,7 +786,6 @@ class CryptoTrader:
         # 直接使用当前显示的网址
         self.target_url = self.url_entry.get()
         self.logger.info(f"开始监控网址: {self.target_url}")
-        
         # 启用开始按钮，启用停止按钮
         self.start_button['state'] = 'disabled'
         self.stop_button['state'] = 'normal'
@@ -800,21 +799,29 @@ class CryptoTrader:
             
         # 启动浏览器作线程
         threading.Thread(target=self._start_browser_monitoring, args=(self.target_url,), daemon=True).start()
+        
         """到这里代码执行到了 995 行"""
-
+        time.sleep(10)
         self.running = True
-        self.update_status("监控运行中...")
-
         # 启用更金额按钮
         self.update_amount_button['state'] = 'normal'
-
-        # 等待 5 秒
-        time.sleep(5)
-
+        self.update_status("监控运行中...")
         # 启动登录状态监控
-        self.start_login_monitoring()
-        
-           
+        threading.Thread(target=self.start_login_monitoring, daemon=True).start()
+        # 启动自动刷新线程
+        threading.Thread(target=self.refresh_page, daemon=True).start()
+        self.logger.info("启动了自动刷新线程")
+        if self.is_position_yes_or_no():
+            self.logger.info("有持仓,不启动自动找54币和周六自动更新URL")
+            threading.Thread(target=self.saturday_auto_update_weekly_url, daemon=True).start()
+            self.logger.info("启动了周六自动更新URL线程")
+
+            threading.Thread(target=self.auto_find_54_coin, daemon=True).start()
+            self.logger.info("启动了自动找54币线程")
+                
+        threading.Thread(target=self.start_url_monitoring, daemon=True).start()
+        self.logger.info("启动了URL监控线程")
+    
     """以下代码是:threading.Thread(target=self._start_browser_monitoring, 
     args=(self.target_url,), daemon=True).start()线程启动后执行的函数,直到 995 行"""
 
@@ -871,19 +878,6 @@ class CryptoTrader:
                 # 启动监控线程
                 threading.Thread(target=self.monitor_prices, daemon=True).start()
                 self.logger.info("启动了监控线程")
-
-                threading.Thread(target=self.refresh_page, daemon=True).start()
-                self.logger.info("启动了自动刷新线程")
-                if self.is_position_yes_or_no():
-                    self.logger.info("有持仓,不启动自动找54币和周六自动更新URL")
-                    threading.Thread(target=self.saturday_auto_update_weekly_url, daemon=True).start()
-                    self.logger.info("启动了周六自动更新URL线程")
-
-                    threading.Thread(target=self.auto_find_54_coin, daemon=True).start()
-                    self.logger.info("启动了自动找54币线程")
-                
-                threading.Thread(target=self.start_url_monitoring, daemon=True).start()
-                self.logger.info("启动了URL监控线程")
                 
             except Exception as e:
                 error_msg = f"加载网站失败: {str(e)}"
@@ -2198,7 +2192,7 @@ class CryptoTrader:
                 if position_yes_value and position_yes_value == "Yes":
                     return position_yes_value
                 else:
-                    return None
+                    return False
                     
             except TimeoutException:
                 self.logger.debug(f"第{attempt + 1}次尝试未找到YES标签,正常情况!")
@@ -2246,7 +2240,7 @@ class CryptoTrader:
                 if position_no_value and position_no_value == "No":
                     return position_no_value
                 else:
-                    return None
+                    return False
                     
             except TimeoutException:
                 self.logger.warning(f"第{attempt + 1}次尝试未找到NO标签")
@@ -3058,13 +3052,15 @@ class CryptoTrader:
             no_element = self.find_position_label_no()
             
             # 任一标签显示持仓状态即返回True
-            if yes_element and yes_element.text.strip() in ("Yes"):
-                self.logger.debug("检测到Yes持仓状态")
+            if (yes_element and yes_element.text.strip()=="Yes") or (no_element and no_element.text.strip()=="No"):
+                self.logger.info("检测到持仓状态")
                 return True
-            if no_element and no_element.text.strip() in ("No"):
-                self.logger.debug("检测到No持仓状态")
-                return True
-            return False
+            elif not yes_element and not no_element:
+                self.logger.info("没有持仓")
+                return False
+            else:
+                self.logger.info("没有持仓")
+                return False
         except Exception as e:
             self.logger.error(f"持仓检查异常: {str(e)}")
             # 出现异常时默认返回True（保守策略防止重复开仓）
