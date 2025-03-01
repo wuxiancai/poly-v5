@@ -3052,6 +3052,7 @@ class CryptoTrader:
     def is_position_yes_or_no(self):
         """检查当前是否持仓(返回True表示有持仓)"""
         try:
+            self.logger.info("检查当前是否持仓")
             # 同时检查Yes/No两种持仓标签
             yes_element = self.find_position_label_yes()
             no_element = self.find_position_label_no()
