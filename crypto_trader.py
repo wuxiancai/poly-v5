@@ -89,7 +89,7 @@ class CryptoTrader:
         # 添加交易次数计数器
         self.trade_count = 0
         self.sell_count = 0  # 添加卖出计数器
-        self.refresh_interval = 600000  # 10分钟 = 600000毫秒
+        self.refresh_interval = 600000  # 10分钟
         self.refresh_timer = None  # 用于存储定时器ID
         self.default_target_price = 0.54
         self._amounts_logged = False
@@ -379,31 +379,31 @@ class CryptoTrader:
 
         # 添加搜索BTC周链接按钮
         self.btc_button = ttk.Button(buttons_frame, text="BTC", 
-                                         command=lambda: self.find_weekly_url('BTC'), width=3,
+                                         command=lambda: self.find_new_weekly_url('BTC'), width=3,
                                          style='Blue.TButton')
         self.btc_button.grid(row=1, column=3, padx=2, pady=3)
 
         # 添加搜索ETH周链接按钮
         self.eth_button = ttk.Button(buttons_frame, text="ETH", 
-                                         command=lambda: self.find_weekly_url('ETH'), width=3,
+                                         command=lambda: self.find_new_weekly_url('ETH'), width=3,
                                          style='Blue.TButton')
         self.eth_button.grid(row=1, column=4, padx=2, pady=3)
 
         # 添加搜索SOLANA周链接按钮
         self.solana_button = ttk.Button(buttons_frame, text="SOL", 
-                                         command=lambda: self.find_weekly_url('SOLANA'), width=3,
+                                         command=lambda: self.find_new_weekly_url('SOLANA'), width=3,
                                          style='Blue.TButton')
         self.solana_button.grid(row=1, column=5, padx=2, pady=3)
 
         # 添加搜索XRP周链接按钮
         self.xrp_button = ttk.Button(buttons_frame, text="XRP", 
-                                         command=lambda: self.find_weekly_url('XRP'), width=3,
+                                         command=lambda: self.find_new_weekly_url('XRP'), width=3,
                                          style='Blue.TButton')
         self.xrp_button.grid(row=1, column=6, padx=2, pady=3)
 
         # 添加搜索DOGE周链接按钮
         self.doge_button = ttk.Button(buttons_frame, text="DOGE", 
-                                         command=lambda: self.find_weekly_url('DOGE'), width=5,
+                                         command=lambda: self.find_new_weekly_url('DOGE'), width=5,
                                          style='Blue.TButton')
         self.doge_button.grid(row=1, column=7, padx=2, pady=3)
 
@@ -807,16 +807,15 @@ class CryptoTrader:
 
         # 启用更金额按钮
         self.update_amount_button['state'] = 'normal'
-        
-        # 启动URL监控
-        self.start_url_monitoring()
+
+        # 等待 5 秒
+        time.sleep(5)
+
         # 启动登录状态监控
         self.start_login_monitoring()
-        # 启动自动更新URL任务
-        self.saturday_auto_update_url()
-
-        self.refresh_page()
-        
+        # 启动URL监控
+        self.start_url_monitoring()
+           
     """以下代码是:threading.Thread(target=self._start_browser_monitoring, 
     args=(self.target_url,), daemon=True).start()线程启动后执行的函数,直到 995 行"""
 
@@ -835,7 +834,7 @@ class CryptoTrader:
                     self.driver = webdriver.Chrome(options=chrome_options)
                     self.update_status("连接到浏览器")
                 except Exception as e:
-                    self.logger.error(f"连接浏览器失败: {str(e)}")
+                    self.logger.error(f"_start_browser_monitoring连接浏览器失败: {str(e)}")
                     self._show_error_and_reset("无法连接Chrome浏览器,请确保已运行start_chrome.sh")
                     return
             try:
@@ -873,6 +872,18 @@ class CryptoTrader:
                 # 启动监控线程
                 threading.Thread(target=self.monitor_prices, daemon=True).start()
                 self.logger.info("启动监控线程")
+
+                threading.Thread(target=self.refresh_page, daemon=True).start()
+                self.logger.info("启动自动刷新线程")
+
+                threading.Thread(target=self.saturday_auto_update_weekly_url, daemon=True).start()
+                self.logger.info("启动周六自动更新URL线程")
+
+                threading.Thread(target=self.auto_find_54_coin, daemon=True).start()
+                self.logger.info("启动自动找54币线程")
+                
+                #threading.Thread(target=self.start_url_monitoring, daemon=True).start()
+                #self.logger.info("启动URL监控线程")
                 
             except Exception as e:
                 error_msg = f"加载网站失败: {str(e)}"
@@ -949,9 +960,9 @@ class CryptoTrader:
         """检查价格变化"""
         try:
             if not self.driver:
-                raise Exception("浏览器连接丢失")
+                raise Exception("monitor_prices浏览器连接丢失")
             
-            # 添加URL检查
+            """# 添加URL检查
             target_url = self.url_entry.get()
             current_url = self.driver.current_url
 
@@ -963,7 +974,7 @@ class CryptoTrader:
                     lambda driver: driver.execute_script('return document.readyState') == 'complete'
                 )
                 self.update_status("已恢复到监控地址")
-            
+            """
             try:
                 # 使用JavaScript直接获取价格
                 prices = self.driver.execute_script("""
@@ -1029,7 +1040,7 @@ class CryptoTrader:
         """获取Portfolio和Cash值"""
         try:
             if not self.driver:
-                raise Exception("浏览器连接丢失")
+                raise Exception("check_balance浏览器连接丢失")
             # 等待页面完全加载
             WebDriverWait(self.driver, 10).until(
                 lambda driver: driver.execute_script('return document.readyState') == 'complete'
@@ -1216,41 +1227,74 @@ class CryptoTrader:
 
     """以下代码是启动 URL 监控和登录状态监控的函数,直到第 1402 行"""
     def start_url_monitoring(self):
-        """启动URL监控(线程安全版本)"""
+        """启动URL监控"""
         with self.url_monitoring_lock:
-            if self.url_check_timer is not None:
+            if getattr(self, 'is_url_monitoring', False):
+                self.logger.debug("URL监控已在运行中")
                 return
-                
-            def _monitor(): 
-                    try:
-                        current_url = self.driver.current_url if self.driver else ""
-                        target_url = self.target_url
-                        if current_url != target_url:
-                            # self.logger.warning(f"检测到URL变化: {current_url} -> 恢复至 {target_url}")
-                            self.driver.get(target_url)
-                    except Exception as e:
-                        self.logger.error(f"URL监控异常: {str(e)}")
-                    finally:
-                        if self.running and not self.is_checking_prices:
-                            self.url_check_timer = self.root.after(1000, _monitor)
-                        else:
-                            self.url_check_timer = None
-                            
+
+            self.is_url_monitoring = True
+            self.logger.info("🔄 启动URL监控...")
+
+            def _monitor():
+                try:
+                    if not getattr(self, 'is_url_monitoring', False):
+                        return
+
+                    # 监控逻辑...
+                    current_url = self.driver.current_url if self.driver else ""
+                    target_url = self.target_url
+                    
+                    if current_url != target_url:
+                        self.logger.warning(f"URL变更: {current_url} -> 恢复至 {target_url}")
+                        self.driver.get(target_url)
+
+                except Exception as e:
+                    self.logger.error(f"监控异常: {str(e)}")
+                finally:
+                    if getattr(self, 'is_url_monitoring', False):
+                        self.url_check_timer = self.root.after(1000, _monitor)
+                    else:
+                        self.url_check_timer = None
+
             self.url_check_timer = self.root.after(0, _monitor)
 
     def stop_url_monitoring(self):
-        """停止URL监控(线程安全版本)"""
-        with self.url_monitoring_lock:  # 使用相同的锁
-            if self.url_check_timer is not None:
-                try:
-                    self.logger.info("🛑 正在停止URL监控...")
-                    self.root.after_cancel(self.url_check_timer)
-                except ValueError:
-                    # 定时器可能已过期或已被取消
-                    self.logger.warning("取消定时器时发现无效ID")
-                finally:
+        """停止URL监控"""
+        with self.url_monitoring_lock:
+            try:
+                # 添加状态标志检查
+                if not hasattr(self, 'is_url_monitoring') or not self.is_url_monitoring:
+                    return
+                
+                self.logger.debug(f"当前定时器ID: {getattr(self, 'url_check_timer', None)}")
+                
+                if self.url_check_timer:
+                    # 强制取消所有待处理定时器
+                    while self.url_check_timer:
+                        try:
+                            self.root.after_cancel(self.url_check_timer)
+                            self.logger.debug(f"成功取消定时器ID: {self.url_check_timer}")
+                            break
+                        except ValueError as e:
+                            if "invalid timer id" in str(e).lower():
+                                self.logger.warning("遇到无效定时器ID，可能已被触发")
+                                break
+                        except Exception as e:
+                            self.logger.error(f"取消定时器异常: {str(e)}")
+                            break
                     self.url_check_timer = None
-                self.logger.debug("URL监控已完全停止")
+                
+                # 更新状态标志
+                self.is_url_monitoring = False
+                self.logger.info("✅ URL监控已完全停止")
+                
+            except Exception as e:
+                self.logger.error(f"停止监控时发生未知错误: {str(e)}")
+            finally:
+                self.url_check_timer = None
+                if hasattr(self, 'is_url_monitoring'):
+                    self.is_url_monitoring = False
                 
     def start_login_monitoring(self):
         """优化版登录状态监控（完全静默处理）"""
@@ -1385,7 +1429,7 @@ class CryptoTrader:
                         self.driver.refresh()
                         self.logger.info("定时刷新成功")
                     else:
-                        self.logger.error("浏览器连接丢失")
+                        self.logger.error("refresh_page浏览器连接丢失")
                 else:
                     self.logger.info("交易进行中，跳过本次刷新")
                 
@@ -1397,9 +1441,9 @@ class CryptoTrader:
             self.logger.error(f"页面刷新失败: {str(e)}")
             if self.running:
                 self.refresh_timer = self.root.after(self.refresh_interval, self.refresh_page)
-    """以上代码执行了登录操作的函数,直到第 1315 行,程序执行返回到 848 行"""
+    """以上代码执行了登录操作的函数,直到第 1399 行,程序执行返回到 848 行"""
    
-    """以下代码是监控买卖条件及执行交易的函数,程序开始进入交易阶段,从 1321 行直到第 2500 行"""  
+    """以下代码是监控买卖条件及执行交易的函数,程序开始进入交易阶段,从 1400 行直到第 2500 行"""  
     def First_trade(self):
         try:
             self.trading = True  # 开始交易
@@ -1546,7 +1590,7 @@ class CryptoTrader:
         try:
             self.trading = True  # 开始交易
             if not self.driver:
-                raise Exception("浏览器连接丢失")
+                raise Exception("Second_trade浏览器连接丢失")
             # 获取当前Yes和No价格
             prices = self.driver.execute_script("""
                 function getPrices() {
@@ -1673,7 +1717,7 @@ class CryptoTrader:
             self.trading = True  # 开始交易
             
             if not self.driver:
-                raise Exception("浏览器连接丢失")  
+                raise Exception("Third_trade浏览器连接丢失")  
             # 获取当前Yes和No价格
             prices = self.driver.execute_script("""
                 function getPrices() {
@@ -1799,7 +1843,7 @@ class CryptoTrader:
             self.trading = True  # 开始交易
             
             if not self.driver:
-                raise Exception("浏览器连接丢失")
+                raise Exception("Forth_trade浏览器连接丢失")
             # 获取当前Yes和No价格
             prices = self.driver.execute_script("""
                 function getPrices() {
@@ -1931,7 +1975,7 @@ class CryptoTrader:
         """当YES价格等于实时Yes价格时自动卖出"""
         try:
             if not self.driver:
-                raise Exception("浏览器连接丢失")
+                raise Exception("Sell_yes浏览器连接丢失")
                 
             # 获取当前Yes价格
             prices = self.driver.execute_script("""
@@ -2020,7 +2064,7 @@ class CryptoTrader:
         """当NO价格等于实时No价格时自动卖出"""
         try:
             if not self.driver:
-                raise Exception("浏览器连接丢失")   
+                raise Exception("Sell_no浏览器连接丢失")   
             
             # 获取当前No价格
             prices = self.driver.execute_script("""
@@ -2132,7 +2176,7 @@ class CryptoTrader:
         for attempt in range(max_retries):
             try:
                 if not self.driver:
-                    self.update_status("请先连接浏览器")
+                    self.update_status("find_position_label_yes请先连接浏览器")
                     return None
                     
                 # 等待页面加载完成
@@ -2143,7 +2187,7 @@ class CryptoTrader:
                 # 尝试获取YES标签
                 try:
                     position_label_yes = self.driver.find_element(By.XPATH, XPathConfig.POSITION_YES_LABEL)
-                    position_value = position_label_yes.text.strip()
+                    position_yes_value = position_label_yes.text.strip()
                 except Exception as e:
                     position_label_yes = self._find_element_with_retry(
                         XPathConfig.POSITION_YES_LABEL,
@@ -2151,15 +2195,15 @@ class CryptoTrader:
                         silent=True
                     )
                 
-                if position_value and position_value == "Yes":
-                    return position_value
+                if position_yes_value and position_yes_value == "Yes":
+                    return position_yes_value
                 else:
                     return None
                     
             except TimeoutException:
-                self.logger.warning(f"第{attempt + 1}次尝试未找到YES标签")
+                self.logger.debug(f"第{attempt + 1}次尝试未找到YES标签,正常情况!")
             except Exception as e:
-                self.logger.error(f"第{attempt + 1}次尝试发生错误: {str(e)}")
+                self.logger.debug(f"第{attempt + 1}次尝试发生错误: {str(e)}")
                 
             if attempt < max_retries - 1:
                 self.logger.info(f"等待{retry_delay}秒后重试...")
@@ -2180,7 +2224,7 @@ class CryptoTrader:
         for attempt in range(max_retries):
             try:
                 if not self.driver:
-                    self.update_status("请先连接浏览器")
+                    self.update_status("find_position_label_no请先连接浏览器")
                     return None
                     
                 # 等待页面加载完成
@@ -2191,7 +2235,7 @@ class CryptoTrader:
                 # 尝试获取YES标签
                 try:
                     position_label_no = self.driver.find_element(By.XPATH, XPathConfig.POSITION_NO_LABEL)
-                    position_value = position_label_no.text.strip()
+                    position_no_value = position_label_no.text.strip()
                 except Exception as e:
                     position_label_no = self._find_element_with_retry(
                         XPathConfig.POSITION_NO_LABEL,
@@ -2199,8 +2243,8 @@ class CryptoTrader:
                         silent=True
                     )
                 
-                if position_value and position_value == "No":
-                    return position_value
+                if position_no_value and position_no_value == "No":
+                    return position_no_value
                 else:
                     return None
                     
@@ -2218,9 +2262,9 @@ class CryptoTrader:
     def click_position_sell_no(self):
         """点击 Positions-Sell-No 按钮"""
         try:
-            position_value = self.find_position_label_yes()
-            # 根据position_value的值决定点击哪个按钮
-            if position_value == "Yes":
+            position_yes_value = self.find_position_label_yes()
+            # 根据position_yes_value的值决定点击哪个按钮
+            if position_yes_value == "Yes":
                 # 如果第一行是Yes，点击第二的按钮
                 try:
                     button = self.driver.find_element(By.XPATH, XPathConfig.POSITION_SELL_NO_BUTTON)
@@ -2251,10 +2295,10 @@ class CryptoTrader:
     def click_position_sell_yes(self):
         """点击 Positions-Sell-Yes 按钮，函数名漏写了一个 YES"""
         try:
-            position_value = self.find_position_label_no()
+            position_no_value = self.find_position_label_no()
                 
-            # 根据position_value的值决定点击哪个按钮
-            if position_value == "No":
+            # 根据position_no_value的值决定点击哪个按钮
+            if position_no_value == "No":
                 # 如果第二行是No，点击第一行YES 的 SELL的按钮
                 try:
                     button = self.driver.find_element(By.XPATH, XPathConfig.POSITION_SELL_YES_BUTTON)
@@ -2806,11 +2850,6 @@ class CryptoTrader:
             self.start_button.invoke()
             self.logger.info("已成功触发开始按钮")
 
-             # 检查是否是重启模式
-            if '--restart' in sys.argv:
-                self.logger.info("检测到重启模式，启动自动寻找价格功能")
-                self.auto_find_price_54_coin()
-
         except Exception as e:
             self.logger.error(f"自动点击失败: {str(e)}")
             self.root.after(10000, self.auto_start_monitor)
@@ -3009,90 +3048,83 @@ class CryptoTrader:
         except Exception as e:
             self.logger.error(f"程序运行出错: {str(e)}")
             raise
-
-    def saturday_auto_update_url(self):
-        """自动更新URL(每周六凌晨1点开始)"""
-        self.logger.info("自动更新URL任务启动完成")
-        def is_time_to_update():
-            """检查是否到了更新时间(北京时间每周六凌晨1:10)"""
+    
+    def is_position_yes_or_no(self):
+        """检查当前是否持仓(返回True表示有持仓)"""
+        try:
+            # 同时检查Yes/No两种持仓标签
+            yes_element = self.find_position_label_yes()
+            no_element = self.find_position_label_no()
+            
+            # 任一标签显示持仓状态即返回True
+            if yes_element and yes_element.text.strip() in ('Yes'):
+                self.logger.debug("检测到Yes持仓状态")
+                return True
+            if no_element and no_element.text.strip() in ('No'):
+                    self.logger.debug("检测到No持仓状态")
+                    return True
+            return False
+        except Exception as e:
+            self.logger.error(f"持仓检查异常: {str(e)}")
+            # 出现异常时默认返回True（保守策略防止重复开仓）
+            return True
+        
+    def is_saturday_auto_update_weekly_url_time(self):
+        """判断是否处于周六凌晨1-6点的自动更新时间窗口"""
+        try:
             beijing_tz = timezone(timedelta(hours=8))
             now = datetime.now(timezone.utc).astimezone(beijing_tz)
-            weekday = now.weekday()
-            
-            # 每周六 1 点 开始 8 点结束
-            update_time = weekday == 5 and 1 <= now.hour < 8
-            return update_time
-        
-        def get_current_button():
-            """根据当前URL判断应该点击哪个按钮"""
-            current_url = self.url_entry.get().strip().lower()
-            button_map = {
-                'bitcoin': self.btc_button,
-                'ethereum': self.eth_button,
-                'solana': self.solana_button,
-                'ripple': self.xrp_button,
-                'dogecoin': self.doge_button
-            }
-            
-            for coin, button in button_map.items():
-                if coin in current_url:
-                    return button
                     
-            # 如果无法判断，默认使用BTC按钮
-            self.logger.warning("无法从URL判断币种,使用默认BTC按钮")
-            return self.btc_button
-        
-        def update_task():
-            """更新任务"""
-            try:
-                # 立即进行一次时间检查
-                is_time_to_update()
-
-                while self.running:
-                    try:
-                        # 检查是否到了更新时间
-                        if is_time_to_update():
-                            self.logger.info("到达预定更新时间,开始更新URL")
-                            while True:
-                                try:
-                                    # 获取当前应该点击的按钮
-                                    current_button = get_current_button()
-                                    # 记录原来的周单URL
-                                    old_weekly_url = self.url_entry.get().strip()
-                                    new_weekly_url = self.find_weekly_url(current_button['text'])
-                                    
-                                    if new_weekly_url and new_weekly_url != old_weekly_url:
-                                        self.logger.info(f"获取到新URL: {new_weekly_url}")
-                                        self.config['website']['url'] = new_weekly_url
-                                        self.save_config()
-                                        self.restart_program()
-                                        return
-                                    else:
-                                        self.logger.info("URL未变化或获取失败,10分钟后重试")
-                                        time.sleep(600)
-                                except Exception as e:
-                                    self.logger.error(f"更新URL过程出错: {str(e)}")
-                                    time.sleep(600)
-                        else:
-                            # 未到更新时间，每1小时检查一次
-                            time.sleep(3600)
-                                  
-                    except Exception as e:
-                        self.logger.error(f"自动更新任务异常: {str(e)}")
-                        time.sleep(60)
-            except Exception as e:
-                self.logger.error(f"更新任务线程异常: {str(e)}")
-                
-        # 确保线程正确启动
-        try:
-            update_thread = Thread(target=update_task, daemon=True, name="URL_Update_Thread")
-            update_thread.start()
+            # 周六判断（weekday()返回5表示周六）
+            if now.weekday() == 5:
+                # 凌晨1点到6点（包含1点整，不包含6点整）
+                if 1 <= now.hour < 6:
+                    self.logger.debug(f"当前处于周六更新时段：{now.strftime('%Y-%m-%d %H:%M')}")
+                    return True
+            return False
         except Exception as e:
-            self.logger.error(f"启动自动更新线程失败: {str(e)}")
+            self.logger.error(f"时间判断异常: {str(e)}")
+            return False
 
-    def find_weekly_url(self, coin):
+    def saturday_auto_update_weekly_url(self):
+        """周六自动更新weekly_url(带重试机制)"""
+        self.logger.info("进入周六URL自动更新模式")
+        def update_task(retry_count=0):
+            try:
+                if not self.is_saturday_auto_update_weekly_url_time():
+                    self.logger.info("超出周六更新时间窗口，停止重试")
+                    return
+
+                if not self.is_position_yes_or_no():
+                    saturday_new_weekly_url = self.find_new_weekly_url()
+                    if saturday_new_weekly_url:
+                        self.config['website']['url'] = saturday_new_weekly_url
+                        self.save_config()
+                        self.logger.info("周合约URL更新成功")
+                        self.restart_program()
+                    else:
+                        self.logger.warning(f"第{retry_count+1}次获取失败,10分钟后重试")
+                        # 使用线程定时器进行重试
+                        threading.Timer(600, update_task, [retry_count+1]).start()
+                else:
+                    self.logger.info("当前持仓，停止更新")
+            except Exception as e:
+                self.logger.error(f"更新异常: {str(e)}")
+                threading.Timer(600, update_task, [retry_count+1]).start()
+
+        # 启动初始任务
+        if self.is_saturday_auto_update_weekly_url_time():
+            self.logger.info("进入周六URL自动更新模式")
+            update_task()
+        else:
+            self.logger.debug("当前不在周六更新时段")
+
+    def find_new_weekly_url(self, coin):
         """在Polymarket市场搜索指定币种的周合约地址,只返回周合约地址"""
         try:
+            # 停止URL监控
+            self.stop_url_monitoring()
+            
             # 保存原始窗口句柄
             self.original_window = self.driver.current_window_handle 
 
@@ -3175,24 +3207,168 @@ class CryptoTrader:
                 # 切换到新标签页获取完整URL
                 self.driver.switch_to.window(self.driver.window_handles[-1])
                 WebDriverWait(self.driver, 10).until(EC.url_contains('/event/'))
+
                 # 获取当前URL
-                final_url = self.driver.current_url
+                new_weekly_url = self.driver.current_url
+
                 # 关闭新标签页并切换回原页面
                 self.driver.close()
                 self.driver.switch_to.window(self.driver.window_handles[-1])
                 self.driver.close()
                 # 切换回原始窗口
                 self.driver.switch_to.window(self.original_window)
-                return final_url
+                return new_weekly_url
                 
             except NoSuchElementException as e:
                 self.logger.warning(f"未找到{coin}周合约链接: {str(e)}")
+            
 
         except Exception as e:
             self.logger.error(f"操作失败: {str(e)}")
+        
 
+    #-----------------以下是自动找 54 币的函数-----------------
+    def is_auto_find_54_coin_time(self):
+        """判断是否处于自动找币时段(周六13点至周五20点)"""
+        try:
+            beijing_tz = timezone(timedelta(hours=8))
+            now = datetime.now(timezone.utc).astimezone(beijing_tz)
+            
+            # 周六判断（weekday=5）
+            if now.weekday() == 5:
+                # 周六13点至23:59
+                if now.hour >= 13:
+                    self.logger.debug(f"当前处于找币时段（周六）: {now.strftime('%Y-%m-%d %H:%M')}")
+                    return True
+            
+            # 周日至周五判断（weekday=6到4）
+            elif now.weekday() in (6,0,1,2,3,4):
+                # 全天有效直到周五20点
+                if now.hour < 20 or (now.weekday() != 4 and now.hour >= 20):
+                    self.logger.debug(f"当前处于找币时段: {now.strftime('%Y-%m-%d %H:%M')}")
+                    return True
+            
+            return False
+        except Exception as e:
+            self.logger.error(f"找币时间判断异常: {str(e)}")
+            return False
+    
+    def check_restart(self):
+        """检查是否处于重启模式"""
+        if '--restart' in sys.argv:
+            self.logger.info("检测到重启模式")
+            return True
+        else:
+            return False
+            
+    def auto_find_54_coin(self):
+        """自动找54币"""
+        self.logger.info("进入自动找54币模式")
+        if self.check_restart():
+            time.sleep(1800)
+        # 时间判断
+        try:
+            # 停止URL监控
+            self.stop_url_monitoring()
+            time.sleep(3)
+
+            if self.is_auto_find_54_coin_time():# 判断是否处于自动找币时段
+                # 持仓检查
+                if not self.is_position_yes_or_no(): # 如果持仓为空
+                    self.logger.info("进入自动找54币模式")
+                    # 找币 函数
+                    def find_54_coin():
+                        try:
+                            
+                            # 设置搜索关键词
+                            coins = [
+                                'BTC',
+                                'ETH',
+                                'SOLANA',
+                                'XRP',
+                                'DOGE'
+                            ]
+                            
+                            for coin in coins:
+                                coin_new_weekly_url = self.find_new_weekly_url(coin)
+                                if coin_new_weekly_url:
+                                    self.logger.info(f"找到{coin}的周合约URL: {coin_new_weekly_url}")
+                                    # 打开新标签页
+                                    self.driver.execute_script("window.open('" + coin_new_weekly_url + "', '_blank');")
+                                    self.logger.info(f"打开新标签页: {coin_new_weekly_url}")
+                                    # 切换到新标签页
+                                    self.driver.switch_to.window(self.driver.window_handles[-1])
+                                    self.logger.info(f"切换到新标签页: {coin_new_weekly_url}")
+                                    # 等待页面加载
+                                    time.sleep(5)
+                                    
+                                    # 获取Yes和No的价格
+                                    prices = self.driver.execute_script("""
+                                        function getPrices() {
+                                            const prices = {yes: null, no: null};
+                                            const elements = document.getElementsByTagName('span');
+                                            
+                                            for (let el of elements) {
+                                                const text = el.textContent.trim();
+                                                if (text.includes('Yes') && text.includes('¢')) {
+                                                    const match = text.match(/(\\d+\\.?\\d*)¢/);
+                                                    if (match) prices.yes = parseFloat(match[1]);
+                                                }
+                                                if (text.includes('No') && text.includes('¢')) {
+                                                    const match = text.match(/(\\d+\\.?\\d*)¢/);
+                                                    if (match) prices.no = parseFloat(match[1]);
+                                                }
+                                            }
+                                            return prices;
+                                        }
+                                        return getPrices();
+                                    """)
+                                    if prices['yes'] is not None and prices['no'] is not None:
+                                        yes_price = float(prices['yes'])
+                                        no_price = float(prices['no'])
+                                        self.logger.info(f"YES价格: {yes_price},NO价格: {no_price}")
+                                        # 判断 YES 和 NO 价格是否在 48-56 之间
+                                        if 48 <= yes_price <= 56 or 48 <= no_price <= 56:
+                                            # 保存当前 URL 到 config
+                                            self.config['website']['url'] = coin_new_weekly_url
+                                            self.save_config()
+                                            self.logger.info(f"保存 {coin_new_weekly_url} 到 config")
+                                            # 关闭当前页面
+                                            self.driver.close()
+                                            # 重启程序
+                                            self.restart_program()
+                                    else:
+                                        self.logger.warning(f"未找到{coin}的周合约URL")
+                                        # 关闭当前页面
+                                        self.driver.close()
+                                        # 等待 30 分钟后重复找币
+                                        threading.Timer(1800, self.auto_find_54_coin).start()    
+                                    
+                                else:
+                                    self.logger.warning(f"未找到{coin}的周合约URL")
+                        except Exception as e:
+                            self.logger.error(f"自动找币异常: {str(e)}")
+                else:
+                    self.logger.info("当前持仓，停止找币")
+            else:
+                self.logger.debug("当前不在自动找币时段")
+
+            # 使用独立线程执行找币
+            find_thread = threading.Thread(target=find_54_coin)
+            find_thread.start()
+            find_thread.join(timeout=60)  # 最多等待60秒
+
+        except Exception as e:
+            self.logger.error(f"自动找币异常: {str(e)}")
+        finally:
+            # 安全恢复监控（双重保障）
+            if not self.is_url_monitoring:
+                self.start_url_monitoring()
+                self.logger.info("✅ 找币完成,已恢复URL监控")
+
+    #-----------------以上是自动找 54 币的函数-----------------
     def _find_element_with_retry(self, xpaths, timeout=10, silent=False):
-        """优化版元素查找（增强空值处理）"""
+        """优化版XPATH元素查找(增强空值处理)"""
         try:
             for i, xpath in enumerate(xpaths, 1):
                 try:
@@ -3208,103 +3384,7 @@ class CryptoTrader:
             if not silent:
                 raise
         return None
-
-    def auto_find_price_54_coin(self):
-        """优化后的价格检查函数，整合时间有效性判断"""
-        beijing_tz = timezone(timedelta(hours=8))
-
-        def check_coin_price(coin):
-            """单次价格检查逻辑"""
-            # 原有持仓检查和标签页操作逻辑...
-            try:
-                # 持仓检查简化
-                if any(el.text.strip() in ('Yes', 'No') for el in [
-                    self.find_position_label_yes(), 
-                    self.find_position_label_no()
-                ]):
-                    self.logger.info("检测到持仓，终止价格检查")
-                    return
-                # 保存原始窗口ID
-                original_window = self.driver.current_window_handle
-                self.logger.debug(f"保存原始窗口ID: {original_window}")
-
-                new_weekly_url = self.find_weekly_url(coin)
-                if not new_weekly_url:
-                    self.logger.debug(f"未找到{coin}的周合约URL")
-                    return False
-
-                # 在新建标签页中打开
-                self.driver.execute_script(f"window.open('{new_weekly_url}', '_blank');")
-                self.driver.switch_to.window(self.driver.window_handles[-1])
-                WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_element_located((By.TAG_NAME, 'body'))
-                )
-
-                # 执行JS获取价格
-                prices = self.driver.execute_script("""
-                    const prices = {yes: null, no: null};
-                    document.querySelectorAll('span').forEach(el => {
-                        const text = el.textContent.trim();
-                        const match = text.match(/(\\d+\\.?\\d*)¢/);
-                        if (match) {
-                            if (text.includes('Yes')) prices.yes = parseFloat(match[1]);
-                            if (text.includes('No')) prices.no = parseFloat(match[1]);
-                        }
-                    });
-                    return prices;
-                """)
-
-                # 价格区间判断
-                valid_prices = [
-                    p for p in [prices.get('yes'), prices.get('no')] 
-                    if p is not None and 45 <= p <= 54
-                ]
-                
-                if valid_prices:
-                    self.logger.info(f"找到合格价格：{coin} {valid_prices}¢")
-                    self.config['website']['url'] = new_weekly_url
-                    self.save_config()
-                    self.restart_program()
-                    return
-                else:
-                    self.logger.info(f"未找到合格价格：{coin} {valid_prices}¢")
-                    # 关闭当前标签页并回到主窗口
-                    self.driver.close()
-                    
-            except Exception as e:
-                self.logger.error(f"检查{coin}出错：{str(e)}")
-                return False
-            finally:
-                # 无论成功失败都恢复原始窗口
-                try:
-                    self.driver.switch_to.window(original_window)
-                    self.driver.refresh()
-                    self.root.after(0, self.start_url_monitoring)
-                except Exception as e:
-                    self.logger.critical(f"窗口恢复失败：{str(e)}")
-
-        # 整合时间判断的持续监控循环
-        while True:
-            try:
-                now = datetime.now(timezone.utc).astimezone(beijing_tz)
-                # 时间有效性判断（周日到周五）
-                if (now.weekday() < 5) or (now.weekday() == 6):
-                    self.logger.debug("处于有效时间窗口，开始价格监控")
-                    for coin in ["比特币", "以太坊"]:
-                        if check_coin_price(coin):
-                            return True
-                    # 每分钟检查一次
-                    time.sleep(60)
-                else:
-                    # 周六时每小时检查一次时间状态
-                    self.logger.info("当前非有效时间窗口（周六），暂停监控")
-                    time.sleep(3600)
-            except Exception as e:
-                self.logger.error(f"监控循环异常: {str(e)}")
-                time.sleep(300)
-
-        return False
-
+    
 if __name__ == "__main__":
     try:
         # 打印启动参数，用于调试
