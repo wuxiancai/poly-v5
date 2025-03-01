@@ -3122,111 +3122,108 @@ class CryptoTrader:
     def find_new_weekly_url(self, coin):
         """在Polymarket市场搜索指定币种的周合约地址,只返回周合约地址"""
         try:
-            # 停止URL监控
-            self.stop_url_monitoring()
-            
-            # 保存原始窗口句柄
-            self.original_window = self.driver.current_window_handle 
-
-            # 重置所有按钮样式为蓝色
-            for btn in [self.btc_button, self.eth_button, self.solana_button, 
-                       self.xrp_button, self.doge_button]:
-                btn.configure(style='Blue.TButton')
-            
-            # 设置被点击的按钮为红色
-            if coin == 'BTC':
-                self.btc_button.configure(style='Red.TButton')
-            elif coin == 'ETH':
-                self.eth_button.configure(style='Red.TButton')
-            elif coin == 'SOLANA':
-                self.solana_button.configure(style='Red.TButton')
-            elif coin == 'XRP':
-                self.xrp_button.configure(style='Red.TButton')
-            elif coin == 'DOGE':
-                self.doge_button.configure(style='Red.TButton')
-
-            base_url = "https://polymarket.com/markets/crypto?_s=start_date%3Adesc"
-            self.driver.switch_to.new_window('tab')
-            self.driver.get(base_url)
-            
-            # 等待页面加载完成
-            WebDriverWait(self.driver, 20).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
-            time.sleep(3)  # 等待页面渲染完成
-            
-            # 设置搜索关键词
-            link_text_map = {
-                'BTC': 'Bitcoin above',
-                'ETH': 'Ethereum above',
-                'SOLANA': 'Solana above',
-                'XRP': 'Ripple above',
-                'DOGE': 'Dogecoin above'
-            }
-            search_text = link_text_map.get(coin, '')
-            
-            if not search_text:
-                self.logger.error(f"无效的币种: {coin}")
-                return
+            if not self.is_position_yes_or_no(): # 如果持仓为空
+                # 停止URL监控
+                self.stop_url_monitoring()
                 
-            try:
-                # 使用确定的XPath查找搜索框
+                # 保存原始窗口句柄
+                self.original_window = self.driver.current_window_handle 
+
+                # 重置所有按钮样式为蓝色
+                for btn in [self.btc_button, self.eth_button, self.solana_button, 
+                        self.xrp_button, self.doge_button]:
+                    btn.configure(style='Blue.TButton')
+                
+                # 设置被点击的按钮为红色
+                if coin == 'BTC':
+                    self.btc_button.configure(style='Red.TButton')
+                elif coin == 'ETH':
+                    self.eth_button.configure(style='Red.TButton')
+                elif coin == 'SOLANA':
+                    self.solana_button.configure(style='Red.TButton')
+                elif coin == 'XRP':
+                    self.xrp_button.configure(style='Red.TButton')
+                elif coin == 'DOGE':
+                    self.doge_button.configure(style='Red.TButton')
+
+                base_url = "https://polymarket.com/markets/crypto?_s=start_date%3Adesc"
+                self.driver.switch_to.new_window('tab')
+                self.driver.get(base_url)
+                
+                # 等待页面加载完成
+                WebDriverWait(self.driver, 20).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "body"))
+                )
+                time.sleep(3)  # 等待页面渲染完成
+                
+                # 设置搜索关键词
+                link_text_map = {
+                    'BTC': 'Bitcoin above',
+                    'ETH': 'Ethereum above',
+                    'SOLANA': 'Solana above',
+                    'XRP': 'Ripple above',
+                    'DOGE': 'Dogecoin above'
+                }
+                search_text = link_text_map.get(coin, '')
+                
+                if not search_text:
+                    self.logger.error(f"无效的币种: {coin}")
+                    return
+                    
                 try:
-                    search_box = self.driver.find_element(By.XPATH, XPathConfig.SEARCH_INPUT)
-                except Exception as e:
-                    search_box = self._find_element_with_retry(
-                        XPathConfig.SEARCH_INPUT,
-                        timeout=3,
-                        silent=True
-                    )
-                
-                # 创建ActionChains对象
-                actions = ActionChains(self.driver)
-                
-                # 清除搜索框并输入搜索词
-                search_box.clear()
-                search_box.send_keys(search_text)
-                time.sleep(1)  # 等待搜索词输入完成
-                
-                # 按ENTER键开始搜索
-                actions.send_keys(Keys.RETURN).perform()
-                time.sleep(1)  # 等待搜索结果加载
-                
-                # 按4次TAB键
-                for i in range(4):
-                    actions.send_keys(Keys.TAB).perform()
-                    time.sleep(0.3)  # 每次TAB之间等待1秒
-                
-                # 使用正确的组合键（Windows/Linux用Ctrl+Enter，Mac用Command+Enter）
-                modifier_key = Keys.COMMAND if sys.platform == 'darwin' else Keys.CONTROL
-                
-                # 创建动作链
-                actions = ActionChains(self.driver)
-                actions.key_down(modifier_key).send_keys(Keys.ENTER).key_up(modifier_key).perform()
-                
-                # 切换到新标签页获取完整URL
-                self.driver.switch_to.window(self.driver.window_handles[-1])
-                WebDriverWait(self.driver, 10).until(EC.url_contains('/event/'))
+                    # 使用确定的XPath查找搜索框
+                    try:
+                        search_box = self.driver.find_element(By.XPATH, XPathConfig.SEARCH_INPUT)
+                    except Exception as e:
+                        search_box = self._find_element_with_retry(
+                            XPathConfig.SEARCH_INPUT,
+                            timeout=3,
+                            silent=True
+                        )
+                    
+                    # 创建ActionChains对象
+                    actions = ActionChains(self.driver)
+                    
+                    # 清除搜索框并输入搜索词
+                    search_box.clear()
+                    search_box.send_keys(search_text)
+                    time.sleep(1)  # 等待搜索词输入完成
+                    
+                    # 按ENTER键开始搜索
+                    actions.send_keys(Keys.RETURN).perform()
+                    time.sleep(1)  # 等待搜索结果加载
+                    
+                    # 按4次TAB键
+                    for i in range(4):
+                        actions.send_keys(Keys.TAB).perform()
+                        time.sleep(0.3)  # 每次TAB之间等待1秒
+                    
+                    # 使用正确的组合键（Windows/Linux用Ctrl+Enter，Mac用Command+Enter）
+                    modifier_key = Keys.COMMAND if sys.platform == 'darwin' else Keys.CONTROL
+                    
+                    # 创建动作链
+                    actions = ActionChains(self.driver)
+                    actions.key_down(modifier_key).send_keys(Keys.ENTER).key_up(modifier_key).perform()
+                    
+                    # 切换到新标签页获取完整URL
+                    self.driver.switch_to.window(self.driver.window_handles[-1])
+                    WebDriverWait(self.driver, 10).until(EC.url_contains('/event/'))
 
-                # 获取当前URL
-                new_weekly_url = self.driver.current_url
+                    # 获取当前URL
+                    new_weekly_url = self.driver.current_url
 
-                # 关闭新标签页并切换回原页面
-                self.driver.close()
-                self.driver.switch_to.window(self.driver.window_handles[-1])
-                self.driver.close()
-                # 切换回原始窗口
-                self.driver.switch_to.window(self.original_window)
-                return new_weekly_url
-                
-            except NoSuchElementException as e:
-                self.logger.warning(f"未找到{coin}周合约链接: {str(e)}")
-            
-
+                    # 关闭新标签页并切换回原页面
+                    self.driver.close()
+                    self.driver.switch_to.window(self.driver.window_handles[-1])
+                    self.driver.close()
+                    # 切换回原始窗口
+                    self.driver.switch_to.window(self.original_window)
+                    return new_weekly_url
+                    
+                except NoSuchElementException as e:
+                    self.logger.warning(f"未找到{coin}周合约链接: {str(e)}")        
         except Exception as e:
             self.logger.error(f"操作失败: {str(e)}")
-        
-
     #-----------------以下是自动找 54 币的函数-----------------
     def is_auto_find_54_coin_time(self):
         """判断是否处于自动找币时段(周六13点至周五20点)"""
